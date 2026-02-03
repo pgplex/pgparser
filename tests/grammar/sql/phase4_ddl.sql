@@ -1,0 +1,2 @@
+-- Phase 4: DDL coverage
+CREATE UNLOGGED MATERIALIZED VIEW mv_unlogged AS SELECT 1;

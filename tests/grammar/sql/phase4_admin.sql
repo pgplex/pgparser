@@ -1,0 +1,4 @@
+-- Phase 4: admin/privilege grammar coverage
+GRANT INSERT ON atest2 TO regress_priv_user4 GRANTED BY CURRENT_USER;
+REVOKE ALL ON LARGE OBJECT 2001, 2002 FROM PUBLIC GRANTED BY CURRENT_ROLE;
+REVOKE GRANT OPTION FOR TRUNCATE ON atest2 FROM regress_priv_user4 GRANTED BY regress_priv_user5;

@@ -479,6 +479,11 @@ func splitStatements(filename string, lines []processedLine) []ExtractedStmt {
 			}
 		}
 
+		// Flush trailing word at end of line for BEGIN ATOMIC detection.
+		if state == stNormal {
+			finishWord()
+		}
+
 		// End of line: add newline to buffer if we have content
 		// (preserves multi-line statement formatting)
 		if hasContent || buf.Len() > 0 {
