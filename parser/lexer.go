@@ -38,7 +38,7 @@ const (
 	lex_XCONST  // Hex string constant (X'...')
 	lex_USCONST // Unicode string constant (U&'...')
 	lex_IDENT
-	lex_UIDENT // Unicode identifier (U&"...")
+	lex_UIDENT         // Unicode identifier (U&"...")
 	lex_TYPECAST       // ::
 	lex_DOT_DOT        // ..
 	lex_COLON_EQUALS   // :=
@@ -46,7 +46,7 @@ const (
 	lex_LESS_EQUALS    // <=
 	lex_GREATER_EQUALS // >=
 	lex_NOT_EQUALS     // <> or !=
-	lex_PARAM // $1, $2, etc.
+	lex_PARAM          // $1, $2, etc.
 	lex_Op
 )
 
@@ -55,34 +55,34 @@ type LexerState int
 
 const (
 	stateInitial LexerState = iota
-	stateXB      // bit string literal
-	stateXC      // extended C-style comments
-	stateXD      // delimited identifiers (double-quoted)
-	stateXH      // hexadecimal byte string
-	stateXQ      // standard quoted strings
-	stateXQS     // quote stop (detect continued strings)
-	stateXE      // extended quoted strings (backslash escapes)
-	stateXDOLQ   // dollar-quoted strings
-	stateXUI     // quoted identifier with Unicode escapes
-	stateXUS     // quoted string with Unicode escapes
-	stateXEU     // Unicode surrogate pair in extended quoted string
+	stateXB                 // bit string literal
+	stateXC                 // extended C-style comments
+	stateXD                 // delimited identifiers (double-quoted)
+	stateXH                 // hexadecimal byte string
+	stateXQ                 // standard quoted strings
+	stateXQS                // quote stop (detect continued strings)
+	stateXE                 // extended quoted strings (backslash escapes)
+	stateXDOLQ              // dollar-quoted strings
+	stateXUI                // quoted identifier with Unicode escapes
+	stateXUS                // quoted string with Unicode escapes
+	stateXEU                // Unicode surrogate pair in extended quoted string
 )
 
 // Token represents a lexical token.
 type Token struct {
-	Type   int    // Token type (IDENT, ICONST, keyword token, etc.)
-	Str    string // String value for identifiers, operators, string literals
-	Ival   int64  // Integer value for ICONST
-	Loc    int    // Byte offset in the source text
+	Type int    // Token type (IDENT, ICONST, keyword token, etc.)
+	Str  string // String value for identifiers, operators, string literals
+	Ival int64  // Integer value for ICONST
+	Loc  int    // Byte offset in the source text
 }
 
 // Lexer implements a PostgreSQL-compatible SQL lexer.
 type Lexer struct {
-	input    string // Input SQL text
-	pos      int    // Current position in input (byte offset)
-	start    int    // Start position of current token
+	input string // Input SQL text
+	pos   int    // Current position in input (byte offset)
+	start int    // Start position of current token
 
-	state    LexerState // Current lexer state
+	state              LexerState // Current lexer state
 	stateBeforeStrStop LexerState // State before entering xqs
 
 	// Literal buffer for building string/identifier values
@@ -606,7 +606,70 @@ func (l *Lexer) lexQuoteContinue() Token {
 	case stateXQ, stateXE:
 		return Token{Type: lex_SCONST, Str: str, Loc: l.start}
 	case stateXUS:
-		return Token{Type: lex_USCONST, Str: str, Loc: l.start}
+		// Unicode string: U&'...'
+		// Check for UESCAPE clause
+		escapeChar := '\\'
+
+		// Look ahead for UESCAPE 'x'
+		// We need to skip whitespace/comments first
+		savedPos := l.pos
+		l.skipWhitespaceAndComments()
+
+		// Check for UESCAPE keyword (case insensitive)
+		if l.pos+7 <= len(l.input) {
+			word := l.input[l.pos : l.pos+7]
+			if strings.EqualFold(word, "UESCAPE") {
+				l.pos += 7
+				l.skipWhitespaceAndComments()
+				// Expect single quoted string
+				if l.pos < len(l.input) && l.input[l.pos] == '\'' {
+					l.pos++
+					// Get escape char
+					if l.pos < len(l.input) {
+						ch := l.input[l.pos]
+						escapeChar = rune(ch)
+						// Verify single char
+						// We need to handle potential escaped quote or just single char
+						// Postgres allows 'x' or '' (empty means no escape, but that's handled during decoding maybe? No, 'no escape' means backslash is literal)
+						// Actually '' is "no escape char".
+
+						// Basic check: consume char
+						l.pos++
+						// Handle quoted quote ''
+						if ch == '\'' && l.pos < len(l.input) && l.input[l.pos] == '\'' {
+							// It was '' inside '...' -> literal quote as escape char
+							escapeChar = '\''
+							l.pos++
+						}
+
+						// Must end with quote
+						if l.pos < len(l.input) && l.input[l.pos] == '\'' {
+							l.pos++
+						} else {
+							// Invalid UESCAPE clause, rollback
+							l.pos = savedPos
+						}
+					} else {
+						l.pos = savedPos
+					}
+				} else {
+					l.pos = savedPos
+				}
+			} else {
+				l.pos = savedPos
+			}
+		} else {
+			l.pos = savedPos
+		}
+
+		// Decode the string using the determined escape char
+		decoded, err := l.decodeUnicodeString(str, escapeChar)
+		if err != nil {
+			l.Err = err
+			return Token{Type: lex_EOF, Loc: l.start}
+		}
+
+		return Token{Type: lex_USCONST, Str: decoded, Loc: l.start}
 	default:
 		return Token{Type: lex_SCONST, Str: str, Loc: l.start}
 	}
@@ -1118,4 +1181,105 @@ func surrogateToCodepoint(high, low rune) rune {
 // isValidUnicodeCodepoint checks if a code point is valid.
 func isValidUnicodeCodepoint(r rune) bool {
 	return r <= unicode.MaxRune && !isUTF16SurrogateFirst(r) && !isUTF16SurrogateSecond(r)
+}
+
+func isSpaceByte(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'
+}
+
+// skipWhitespaceAndComments skips whitespace and comments (both -- and /* */).
+func (l *Lexer) skipWhitespaceAndComments() {
+	for l.pos < len(l.input) {
+		ch := l.input[l.pos]
+
+		if isSpaceByte(ch) {
+			l.pos++
+			continue
+		}
+
+		if ch == '-' && l.pos+1 < len(l.input) && l.input[l.pos+1] == '-' {
+			l.skipLineComment()
+			continue
+		}
+
+		if ch == '/' && l.pos+1 < len(l.input) && l.input[l.pos+1] == '*' {
+			l.pos += 2
+			depth := 1
+			for l.pos < len(l.input) && depth > 0 {
+				if l.pos >= len(l.input) {
+					break
+				}
+				if l.input[l.pos] == '*' && l.pos+1 < len(l.input) && l.input[l.pos+1] == '/' {
+					depth--
+					l.pos += 2
+				} else if l.input[l.pos] == '/' && l.pos+1 < len(l.input) && l.input[l.pos+1] == '*' {
+					depth++
+					l.pos += 2
+				} else {
+					l.pos++
+				}
+			}
+			continue
+		}
+
+		break
+	}
+}
+
+// decodeUnicodeString decodes a U& string with the given escape character.
+func (l *Lexer) decodeUnicodeString(s string, escape rune) (string, error) {
+	var buf strings.Builder
+	runes := []rune(s)
+	n := len(runes)
+
+	for i := 0; i < n; i++ {
+		r := runes[i]
+
+		if r == escape {
+			if i+1 >= n {
+				return "", fmt.Errorf("invalid Unicode escape sequence at end of string")
+			}
+
+			next := runes[i+1]
+
+			// Escaped escape char
+			if next == escape {
+				buf.WriteRune(escape)
+				i++
+				continue
+			}
+
+			// + indicates 6-digit hex
+			if next == '+' {
+				if i+8 > n {
+					return "", fmt.Errorf("invalid Unicode escape sequence")
+				}
+				hexStr := string(runes[i+2 : i+8])
+				val, err := strconv.ParseInt(hexStr, 16, 32)
+				if err != nil {
+					return "", fmt.Errorf("invalid Unicode escape sequence: %v", err)
+				}
+				buf.WriteRune(rune(val))
+				i += 7
+				continue
+			}
+
+			// Otherwise 4-digit hex
+			if i+5 > n {
+				return "", fmt.Errorf("invalid Unicode escape sequence")
+			}
+			hexStr := string(runes[i+1 : i+5])
+			val, err := strconv.ParseInt(hexStr, 16, 32)
+			if err != nil {
+				return "", fmt.Errorf("invalid Unicode escape sequence: %v", err)
+			}
+			buf.WriteRune(rune(val))
+			i += 4
+			continue
+		}
+
+		buf.WriteRune(r)
+	}
+
+	return buf.String(), nil
 }
