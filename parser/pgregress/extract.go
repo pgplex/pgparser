@@ -38,8 +38,8 @@ var psqlTerminatorRE = regexp.MustCompile(`(?i)\\(g|gx|gset|gdesc|gexec|crosstab
 // copyFromStdinRE detects COPY ... FROM STDIN statements.
 var copyFromStdinRE = regexp.MustCompile(`(?i)\bCOPY\b[^;]*\bFROM\b\s+STDIN\b`)
 
-// preprocessLines handles psql metacommands and COPY FROM stdin data blocks.
-// It returns processed lines with metacommands removed and COPY data skipped.
+// preprocessLines handles psql metacommands (line-start only) and COPY FROM stdin data blocks.
+// It returns processed lines with start-of-line metacommands removed and COPY data skipped.
 func preprocessLines(content []byte) []processedLine {
 	rawLines := bytes.Split(content, []byte("\n"))
 	result := make([]processedLine, 0, len(rawLines))
@@ -48,11 +48,11 @@ func preprocessLines(content []byte) []processedLine {
 	for i, raw := range rawLines {
 		lineNum := i + 1
 		line := string(raw)
+		line = strings.TrimRight(line, "\r")
 
 		// In COPY data mode, skip until \. terminator
 		if inCopyData {
-			trimmed := strings.TrimRight(line, "\r")
-			if trimmed == "\\." {
+			if line == "\\." {
 				inCopyData = false
 			}
 			// Skip this line either way (data or terminator)
@@ -73,33 +73,15 @@ func preprocessLines(content []byte) []processedLine {
 			continue
 		}
 
-		// Check for mid-line psql metacommand (e.g., "SELECT 1 \gset")
-		// We need to find \ that starts a metacommand but is NOT inside a string.
-		sqlPart, terminated := splitMidLineMeta(line)
-		if terminated {
-			result = append(result, processedLine{
-				text:       sqlPart,
-				lineNum:    lineNum,
-				terminates: true,
-			})
-			continue
-		}
-
-		// Normal SQL line
+		// Normal SQL line (mid-line metacommands are handled in splitStatements)
 		result = append(result, processedLine{
 			text:    line,
 			lineNum: lineNum,
 		})
 
 		// Check if this line completes a COPY FROM STDIN statement.
-		// We check if the line ends with a semicolon (possibly after whitespace)
-		// and the accumulated context looks like COPY FROM STDIN.
-		// This is a heuristic: we'll do the real check in splitStatements
-		// after we see the full statement. But for the line-level preprocessing,
-		// we set inCopyData after the statement-ending semicolon on a COPY FROM STDIN.
-		// Actually, the real detection must happen at the statement level.
-		// We'll handle this by scanning for the pattern across the recent lines.
-		// For simplicity, check if this line contains "stdin" + ";" pattern.
+		// Note: The original heuristic might be flaky for multi-line COPY statements,
+		// but typically COPY FROM STDIN is one line or ends on a line.
 		if looksLikeCopyStdinEnd(line) {
 			inCopyData = true
 		}
@@ -338,6 +320,31 @@ func splitStatements(filename string, lines []processedLine) []ExtractedStmt {
 				}
 
 				switch {
+				case ch == '\\':
+					// Check for mid-line psql metacommand (e.g. \gset) which acts as terminator.
+					// It must be at word start (or preceded by space/semicolon, but here we just check if it's outside strings).
+					// Scan ahead to match psqlTerminatorRE
+					rest := text[i:]
+					// psqlTerminatorRE expects start of string, but we are in middle.
+					// We need to check if 'rest' starts with one of the terminators.
+					// The RE is `(?i)\\(g|gx|gset|gdesc|gexec|crosstabview)\b`
+					// We can just match against the pattern manually or use FindStringIndex.
+					if loc := psqlTerminatorRE.FindStringIndex(rest); loc != nil && loc[0] == 0 {
+						// Found terminator at current position
+						emit()
+						// Skip the rest of the line as psql would consume it
+						i = n
+					} else {
+						// Just a backslash, or unknown metacommand?
+						// Treat as backslash (or if followed by ;, it is psql separator)
+						if i+1 < n && text[i+1] == ';' {
+							emit()
+							i++
+						} else {
+							buf.WriteByte(ch)
+						}
+					}
+
 				case ch == ';':
 					// Only split on semicolons outside parens and outside BEGIN ATOMIC blocks
 					if parenDepth == 0 && atomicDepth == 0 {
@@ -402,10 +409,25 @@ func splitStatements(filename string, lines []processedLine) []ExtractedStmt {
 						buf.WriteByte(ch)
 					}
 
-				case ch == '\\' && i+1 < n && text[i+1] == ';':
-					// psql \; separator: emit current statement and skip the \;
-					emit()
-					i++ // skip the ; as well
+				case ch == '\\':
+					// Check for mid-line psql metacommand (e.g. \gset) which acts as terminator.
+					// It must be at word start (or preceded by space/semicolon, but here we just check if it's outside strings).
+					// Scan ahead to match psqlTerminatorRE
+					rest := text[i:]
+					if loc := psqlTerminatorRE.FindStringIndex(rest); loc != nil && loc[0] == 0 {
+						// Found terminator at current position
+						emit()
+						// Skip the rest of the line as psql would consume it
+						i = n
+					} else {
+						// Check for psql \; separator
+						if i+1 < n && text[i+1] == ';' {
+							emit()
+							i++
+						} else {
+							buf.WriteByte(ch)
+						}
+					}
 
 				default:
 					if !isSpaceByte(ch) {
@@ -738,6 +760,25 @@ func ReplacePsqlVariables(sql string) (string, bool) {
 						}
 						varEnd++
 					}
+				}
+			}
+
+			if isVar {
+				// Check if the variable name is a SQL keyword that shouldn't be replaced
+				// (e.g. :NULL in array slice [1:NULL])
+				varName := ""
+				if replType == 0 {
+					varName = sql[i+1 : varEnd]
+				} else {
+					// quoted, skip quotes
+					varName = sql[i+2 : varEnd-1]
+				}
+
+				if strings.ToUpper(varName) == "NULL" {
+					isVar = false
+					// Rewind varEnd to i+1 so we just consume the colon in default case?
+					// No, we need to process the colon and following chars normally.
+					// Just fall through to default processing.
 				}
 			}
 

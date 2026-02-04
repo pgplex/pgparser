@@ -82,6 +82,7 @@ func TestPGRegress(t *testing.T) {
 			var failIndices []int
 
 			for i, stmt := range stmts {
+
 				sqlToParse := stmt.SQL
 				if stmt.HasPsqlVar {
 					sqlToParse, _ = ReplacePsqlVariables(stmt.SQL)
@@ -91,9 +92,19 @@ func TestPGRegress(t *testing.T) {
 					trimmed := strings.TrimSpace(sqlToParse)
 					if trimmed == "psql_var" || trimmed == "psql_var;" {
 						sqlToParse = "SELECT 1"
+					} else {
+						// Handle "EXPLAIN ... :var" -> "EXPLAIN ... psql_var" -> "EXPLAIN ... SELECT 1"
+						// We check if EXPLAIN appears before psql_var.
+						upper := strings.ToUpper(sqlToParse)
+						expIdx := strings.Index(upper, "EXPLAIN")
+						varIdx := strings.Index(sqlToParse, "psql_var")
+						if expIdx >= 0 && varIdx > expIdx {
+							sqlToParse = strings.Replace(sqlToParse, "psql_var", "SELECT 1", 1)
+						}
 					}
 				}
 				_, parseErr := parser.Parse(sqlToParse)
+
 				isKnown := intSliceContains(kf, i)
 
 				if parseErr != nil {
@@ -213,13 +224,23 @@ func TestPGRegressStats(t *testing.T) {
 				trimmed := strings.TrimSpace(sql)
 				if trimmed == "psql_var" || trimmed == "psql_var;" {
 					sql = "SELECT 1"
+				} else {
+					upper := strings.ToUpper(sql)
+					expIdx := strings.Index(upper, "EXPLAIN")
+					varIdx := strings.Index(sql, "psql_var")
+					if expIdx >= 0 && varIdx > expIdx {
+						sql = strings.Replace(sql, "psql_var", "SELECT 1", 1)
+					}
 				}
 			}
 			if _, err := parser.Parse(sql); err == nil {
 				passed++
 			} else if stmt.HasPsqlVar {
 				psqlVar++
+			} else {
+				// FAILURE
 			}
+
 		}
 
 		stats = append(stats, fileStat{name: base, total: len(stmts), passed: passed, psqlVar: psqlVar})
