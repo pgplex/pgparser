@@ -3,7 +3,7 @@ package parser
 import (
 	"testing"
 
-	"github.com/pgparser/pgparser/nodes"
+	"github.com/bytebase/pgparser/nodes"
 )
 
 func TestLexerTokenMapping(t *testing.T) {

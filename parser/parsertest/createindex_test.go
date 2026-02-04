@@ -3,8 +3,8 @@ package parsertest
 import (
 	"testing"
 
-	"github.com/pgparser/pgparser/nodes"
-	"github.com/pgparser/pgparser/parser"
+	"github.com/bytebase/pgparser/nodes"
+	"github.com/bytebase/pgparser/parser"
 )
 
 // parseIndexStmt is a helper that parses input and returns the first statement as *nodes.IndexStmt.

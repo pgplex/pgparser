@@ -14,7 +14,7 @@
 ## Installation
 
 ```bash
-go get github.com/pgparser/pgparser
+go get github.com/bytebase/pgparser
 ```
 
 ## Quick Start
@@ -27,7 +27,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/pgparser/pgparser/parser"
+	"github.com/bytebase/pgparser/parser"
 )
 
 func main() {

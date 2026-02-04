@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgparser/pgparser/parser"
+	"github.com/bytebase/pgparser/parser"
 )
 
 var update = flag.Bool("update", false, "regenerate known_failures.json from current parse results")

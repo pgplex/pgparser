@@ -9,7 +9,7 @@ import __yyfmt__ "fmt"
 
 import (
 	"fmt"
-	"github.com/pgparser/pgparser/nodes"
+	"github.com/bytebase/pgparser/nodes"
 )
 
 //line gram.y:18

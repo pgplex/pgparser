@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgparser/pgparser/nodes"
-	"github.com/pgparser/pgparser/parser"
-	"github.com/pgparser/pgparser/parser/pgregress"
+	"github.com/bytebase/pgparser/nodes"
+	"github.com/bytebase/pgparser/parser"
+	"github.com/bytebase/pgparser/parser/pgregress"
 )
 
 type expectations map[string][]string
