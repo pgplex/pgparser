@@ -606,3 +606,78 @@ func TestOrderedSetAggrArgs(t *testing.T) {
 		})
 	}
 }
+
+func TestLookaheadFormatLA(t *testing.T) {
+	// FORMAT followed by JSON should become FORMAT_LA
+	input := "COPY t TO STDOUT (FORMAT JSON)"
+	_, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse error for FORMAT JSON: %v", err)
+	}
+}
+
+func TestLookaheadWithoutLA(t *testing.T) {
+	// WITHOUT followed by TIME should become WITHOUT_LA
+	input := "SELECT CAST('2024-01-01' AS TIMESTAMP WITHOUT TIME ZONE)"
+	_, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse error for WITHOUT TIME ZONE: %v", err)
+	}
+}
+
+func TestLookaheadWithOrdinality(t *testing.T) {
+	// WITH followed by ORDINALITY should become WITH_LA
+	input := "SELECT * FROM generate_series(1,3) WITH ORDINALITY"
+	_, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse error for WITH ORDINALITY: %v", err)
+	}
+}
+
+func TestParseCast(t *testing.T) {
+	tests := []string{
+		"SELECT CAST(1 AS INTEGER)",
+		"SELECT CAST('hello' AS TEXT)",
+		"SELECT CAST(x AS NUMERIC(10,2)) FROM t",
+	}
+	for _, sql := range tests {
+		_, err := Parse(sql)
+		if err != nil {
+			t.Errorf("Parse error for %q: %v", sql, err)
+		}
+	}
+}
+
+func TestParseSelectLimit(t *testing.T) {
+	tests := []string{
+		"SELECT * FROM t LIMIT 10",
+		"SELECT * FROM t ORDER BY a LIMIT 10",
+		"SELECT * FROM t ORDER BY a LIMIT 10 OFFSET 5",
+		"SELECT * FROM t LIMIT 10 FOR UPDATE",
+		"SELECT * FROM t FOR UPDATE LIMIT 10",
+		"SELECT * FROM t ORDER BY a LIMIT 10 FOR UPDATE",
+	}
+	for _, sql := range tests {
+		_, err := Parse(sql)
+		if err != nil {
+			t.Errorf("Parse error for %q: %v", sql, err)
+		}
+	}
+}
+
+func TestParseGrant(t *testing.T) {
+	tests := []string{
+		"GRANT SELECT ON TABLE t TO role1",
+		"GRANT INSERT ON TABLE t TO role1",
+		"GRANT UPDATE ON TABLE t TO role1",
+		"GRANT DELETE ON TABLE t TO role1",
+		"GRANT ALL ON TABLE t TO role1",
+		"GRANT SELECT, INSERT, UPDATE ON TABLE t TO role1",
+	}
+	for _, sql := range tests {
+		_, err := Parse(sql)
+		if err != nil {
+			t.Errorf("Parse error for %q: %v", sql, err)
+		}
+	}
+}

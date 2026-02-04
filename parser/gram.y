@@ -39,6 +39,8 @@ import (
 %token         NOT_LA    /* lookahead token for NOT LIKE etc */
 %token         WITH_LA   /* lookahead token for WITH TIME ZONE */
 %token         NULLS_LA  /* lookahead token for NULLS FIRST/LAST */
+%token         FORMAT_LA /* lookahead token for FORMAT JSON */
+%token         WITHOUT_LA /* lookahead token for WITHOUT TIME ZONE */
 
 // Keyword tokens (must match keywords.go)
 %token <str> ABORT_P ABSENT ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
@@ -5199,16 +5201,10 @@ utility_option_elem:
 	;
 
 utility_option_name:
-	ColId            { $$ = $1 }
+	NonReservedWord  { $$ = $1 }
 	| ANALYZE        { $$ = "analyze" }
-	| VERBOSE        { $$ = "verbose" }
-	| FULL           { $$ = "full" }
-	| FREEZE         { $$ = "freeze" }
-	| FORMAT         { $$ = "format" }
-	| NULL_P         { $$ = "null" }
+	| FORMAT_LA      { $$ = "format" }
 	| DEFAULT        { $$ = "default" }
-	| FORCE          { $$ = "force" }
-	| CONCURRENTLY   { $$ = "concurrently" }
 	;
 
 utility_option_arg:
@@ -6042,18 +6038,8 @@ privilege:
 		{ $$ = &nodes.AccessPriv{PrivName: "references", Cols: $2} }
 	| CREATE opt_column_list
 		{ $$ = &nodes.AccessPriv{PrivName: "create", Cols: $2} }
-	| INSERT opt_column_list
-		{ $$ = &nodes.AccessPriv{PrivName: "insert", Cols: $2} }
-	| UPDATE opt_column_list
-		{ $$ = &nodes.AccessPriv{PrivName: "update", Cols: $2} }
-	| DELETE_P opt_column_list
-		{ $$ = &nodes.AccessPriv{PrivName: "delete", Cols: $2} }
-	| TRIGGER opt_column_list
-		{ $$ = &nodes.AccessPriv{PrivName: "trigger", Cols: $2} }
-	| EXECUTE opt_column_list
-		{ $$ = &nodes.AccessPriv{PrivName: "execute", Cols: $2} }
-	| TRUNCATE opt_column_list
-		{ $$ = &nodes.AccessPriv{PrivName: "truncate", Cols: $2} }
+	| ALTER SYSTEM_P
+		{ $$ = &nodes.AccessPriv{PrivName: "alter system"} }
 	| ColId opt_column_list
 		{ $$ = &nodes.AccessPriv{PrivName: $1, Cols: $2} }
 	;
@@ -6222,6 +6208,7 @@ CreateGroupStmt:
 
 opt_with:
 	WITH      {}
+	| WITH_LA {}
 	| /* EMPTY */ {}
 	;
 
@@ -7678,12 +7665,6 @@ select_no_parens:
 			n.SortClause = $2
 			$$ = n
 		}
-	| select_clause opt_sort_clause select_limit
-		{
-			n := $1.(*nodes.SelectStmt)
-			insertSelectOptions(n, $2, nil, $3, nil)
-			$$ = n
-		}
 	| select_clause opt_sort_clause for_locking_clause opt_select_limit
 		{
 			n := $1.(*nodes.SelectStmt)
@@ -7707,12 +7688,6 @@ select_no_parens:
 			n := $2.(*nodes.SelectStmt)
 			n.WithClause = $1.(*nodes.WithClause)
 			n.SortClause = $3
-			$$ = n
-		}
-	| with_clause select_clause opt_sort_clause select_limit
-		{
-			n := $2.(*nodes.SelectStmt)
-			insertSelectOptions(n, $3, nil, $4, $1.(*nodes.WithClause))
 			$$ = n
 		}
 	| with_clause select_clause opt_sort_clause for_locking_clause opt_select_limit
@@ -7875,6 +7850,13 @@ opt_with_clause:
 
 with_clause:
 	WITH cte_list
+		{
+			$$ = &nodes.WithClause{
+				Ctes:      $2,
+				Recursive: false,
+			}
+		}
+	| WITH_LA cte_list
 		{
 			$$ = &nodes.WithClause{
 				Ctes:      $2,
@@ -8378,7 +8360,7 @@ opt_col_def_list:
 	;
 
 opt_ordinality:
-	WITH ORDINALITY		{ $$ = true }
+	WITH_LA ORDINALITY		{ $$ = true }
 	| /* EMPTY */		{ $$ = false }
 	;
 
@@ -9500,14 +9482,6 @@ c_expr:
 		{
 			$$ = $2
 		}
-	| CAST '(' a_expr AS Typename ')'
-		{
-			$$ = &nodes.TypeCast{
-				Arg:      $3,
-				TypeName: $5,
-				Location: -1,
-			}
-		}
 	| explicit_row
 		{
 			$$ = $1
@@ -10567,14 +10541,14 @@ json_value_expr:
 	;
 
 json_format_clause:
-	FORMAT JSON
+	FORMAT_LA JSON
 		{
 			$$ = &nodes.JsonFormat{
 				FormatType: nodes.JS_FORMAT_JSON,
 				Location:   -1,
 			}
 		}
-	| FORMAT JSON ENCODING name
+	| FORMAT_LA JSON ENCODING name
 		{
 			$$ = &nodes.JsonFormat{
 				FormatType: nodes.JS_FORMAT_JSON,
@@ -11670,7 +11644,7 @@ ConstInterval:
 
 opt_timezone:
 	WITH_LA TIME ZONE		{ $$ = true }
-	| WITHOUT TIME ZONE		{ $$ = false }
+	| WITHOUT_LA TIME ZONE		{ $$ = false }
 	| /* EMPTY */			{ $$ = false }
 	;
 
@@ -17122,6 +17096,7 @@ type_func_name_keyword:
 	AUTHORIZATION
 	| BINARY
 	| COLLATION
+	| CONCURRENTLY
 	| CROSS
 	| CURRENT_SCHEMA
 	| FREEZE

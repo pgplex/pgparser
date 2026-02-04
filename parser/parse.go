@@ -98,6 +98,10 @@ func (l *parserLexer) needsLookahead(tokType int) bool {
 		return true
 	case NULLS_P:
 		return true
+	case WITHOUT:
+		return true
+	case FORMAT:
+		return true
 	}
 	return false
 }
@@ -113,9 +117,9 @@ func (l *parserLexer) applyLookahead(curToken, nextToken int) int {
 			return NOT_LA
 		}
 	case WITH:
-		// Replace WITH by WITH_LA if followed by TIME (for WITH TIME ZONE)
+		// Replace WITH by WITH_LA if followed by TIME or ORDINALITY
 		switch nextToken {
-		case TIME:
+		case TIME, ORDINALITY:
 			return WITH_LA
 		}
 	case NULLS_P:
@@ -123,6 +127,18 @@ func (l *parserLexer) applyLookahead(curToken, nextToken int) int {
 		switch nextToken {
 		case FIRST_P, LAST_P, DISTINCT, NOT:
 			return NULLS_LA
+		}
+	case FORMAT:
+		// Replace FORMAT by FORMAT_LA if followed by JSON
+		switch nextToken {
+		case JSON:
+			return FORMAT_LA
+		}
+	case WITHOUT:
+		// Replace WITHOUT by WITHOUT_LA if followed by TIME
+		switch nextToken {
+		case TIME:
+			return WITHOUT_LA
 		}
 	}
 	return curToken
