@@ -6,7 +6,7 @@ package parser
 import (
 	"fmt"
 
-	"github.com/bytebase/pgparser/nodes"
+	"github.com/pgplex/pgparser/nodes"
 )
 
 // ParseResult contains the result of parsing.

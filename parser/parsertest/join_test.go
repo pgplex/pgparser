@@ -3,8 +3,8 @@ package parsertest
 import (
 	"testing"
 
-	"github.com/bytebase/pgparser/nodes"
-	"github.com/bytebase/pgparser/parser"
+	"github.com/pgplex/pgparser/nodes"
+	"github.com/pgplex/pgparser/parser"
 )
 
 // TestParseCrossJoin verifies CROSS JOIN produces a JoinExpr with JOIN_INNER and no quals.

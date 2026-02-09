@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytebase/pgparser/nodes"
-	"github.com/bytebase/pgparser/parser"
+	"github.com/pgplex/pgparser/nodes"
+	"github.com/pgplex/pgparser/parser"
 )
 
 // =============================================================================

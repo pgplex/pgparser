@@ -3,8 +3,8 @@ package parsertest
 import (
 	"testing"
 
-	"github.com/bytebase/pgparser/nodes"
-	"github.com/bytebase/pgparser/parser"
+	"github.com/pgplex/pgparser/nodes"
+	"github.com/pgplex/pgparser/parser"
 )
 
 // TestParseBasicCTE tests parsing a basic CTE: WITH cte AS (SELECT 1) SELECT * FROM cte

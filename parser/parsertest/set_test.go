@@ -3,7 +3,7 @@ package parsertest
 import (
 	"testing"
 
-	"github.com/bytebase/pgparser/nodes"
+	"github.com/pgplex/pgparser/nodes"
 )
 
 /*****************************************************************************

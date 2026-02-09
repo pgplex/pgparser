@@ -11,7 +11,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/bytebase/pgparser/parser"
+	"github.com/pgplex/pgparser/parser"
 )
 
 // TestAnalyzeFailures reads known_failures.json, parses every failing statement,

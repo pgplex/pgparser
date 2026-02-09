@@ -14,7 +14,7 @@
 ## Installation
 
 ```bash
-go get github.com/bytebase/pgparser
+go get github.com/pgplex/pgparser
 ```
 
 ## Quick Start
@@ -27,7 +27,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/bytebase/pgparser/parser"
+	"github.com/pgplex/pgparser/parser"
 )
 
 func main() {
@@ -75,7 +75,7 @@ go test ./parser/pgregress -run TestPGRegressStats -v
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=bytebase/pgparser&type=date&legend=top-left)](https://www.star-history.com/#bytebase/pgparser&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=pgplex/pgparser&type=date&legend=top-left)](https://www.star-history.com/#pgplex/pgparser&type=date&legend=top-left)
 
 ## License
 

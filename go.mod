@@ -1,3 +1,3 @@
-module github.com/bytebase/pgparser
+module github.com/pgplex/pgparser
 
 go 1.21
