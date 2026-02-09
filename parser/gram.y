@@ -147,7 +147,8 @@ import (
 %type <ival>  opt_asc_desc
 %type <ival>  Iconst
 %type <str>   Sconst
-%type <boolean> opt_all_clause opt_distinct_clause set_quantifier
+%type <boolean> opt_all_clause set_quantifier
+%type <list>  distinct_clause opt_distinct_clause
 %type <node>  with_clause opt_with_clause common_table_expr
 %type <ival>  opt_materialized
 %type <list>  cte_list
@@ -7725,7 +7726,8 @@ simple_select:
 	| SELECT distinct_clause target_list into_clause from_clause where_clause group_clause having_clause window_clause
 		{
 			n := &nodes.SelectStmt{
-				TargetList: $3,
+				DistinctClause: $2,
+				TargetList:     $3,
 			}
 			if $4 != nil {
 				n.IntoClause = $4.(*nodes.IntoClause)
@@ -7745,7 +7747,6 @@ simple_select:
 			if $9 != nil {
 				n.WindowClause = $9
 			}
-			// TODO: handle DISTINCT clause
 			$$ = n
 		}
 	| select_clause UNION set_quantifier select_clause
@@ -7803,13 +7804,22 @@ opt_all_clause:
 	;
 
 opt_distinct_clause:
-	distinct_clause { $$ = true }
-	| /* EMPTY */ { $$ = false }
+	distinct_clause { $$ = $1 }
+	| opt_all_clause { $$ = nil }
 	;
 
 distinct_clause:
 	DISTINCT
+		{
+			/* We use (NIL) as a placeholder to indicate that all target expressions
+			 * should be placed in the DISTINCT list during parsetree analysis.
+			 */
+			$$ = &nodes.List{Items: []nodes.Node{nil}}
+		}
 	| DISTINCT ON '(' expr_list ')'
+		{
+			$$ = $4
+		}
 	;
 
 set_quantifier:
