@@ -28,6 +28,9 @@ import (
 	typename  *nodes.TypeName  // for Typename values
 	partspec  *nodes.PartitionSpec
 	partbound *nodes.PartitionBoundSpec
+	grpclause  *GroupClause    // for GROUP BY clause
+	keyaction  *KeyAction      // for FK key_action
+	keyactions *KeyActions     // for FK key_actions
 }
 
 // Token types from the lexer
@@ -132,7 +135,8 @@ import (
 %type <node>  opt_repeatable_clause
 %type <ival>  join_type
 %type <list>  stmtmulti target_list from_list opt_target_list
-%type <list>  group_clause group_by_list
+%type <grpclause> group_clause
+%type <list>  group_by_list
 %type <node>  group_by_item having_clause
 %type <node>  empty_grouping_set cube_clause rollup_clause grouping_sets_clause
 %type <list>  sort_clause opt_sort_clause sortby_list
@@ -147,7 +151,8 @@ import (
 %type <ival>  opt_asc_desc
 %type <ival>  Iconst
 %type <str>   Sconst
-%type <boolean> opt_all_clause set_quantifier
+%type <boolean> opt_all_clause
+%type <ival>   set_quantifier
 %type <list>  distinct_clause opt_distinct_clause
 %type <node>  with_clause opt_with_clause common_table_expr
 %type <ival>  opt_materialized
@@ -373,7 +378,10 @@ import (
 %type <boolean>  opt_instead opt_trusted
 %type <list>  handler_name opt_inline_handler opt_validator
 %type <ival>  ConstraintAttributeSpec ConstraintAttributeElem
-%type <ival>  key_match key_actions key_update key_delete key_action
+%type <ival>  key_match
+%type <keyaction>  key_action
+%type <keyaction>  key_update key_delete
+%type <keyactions> key_actions
 %type <list>  opt_c_include ExclusionConstraintList
 %type <list>  ExclusionConstraintElem
 %type <str>   OptConsTableSpace ExistingIndex
@@ -1373,6 +1381,7 @@ CreateStmt:
 	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')' OptInherit OptPartitionSpec OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($4)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
 				TableElts:      $6,
@@ -1387,6 +1396,7 @@ CreateStmt:
 	| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '(' OptTableElementList ')' OptInherit OptPartitionSpec OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($7)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
 				TableElts:      $9,
@@ -1402,6 +1412,7 @@ CreateStmt:
 	| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name ForValues OptPartitionSpec OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($4)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			inh := makeRangeVar($7)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
@@ -1417,6 +1428,7 @@ CreateStmt:
 	| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF qualified_name ForValues OptPartitionSpec OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($7)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			inh := makeRangeVar($10)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
@@ -1433,6 +1445,7 @@ CreateStmt:
 	| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name '(' TypedTableElementList ')' ForValues OptPartitionSpec OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($4)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			inh := makeRangeVar($7)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
@@ -1449,6 +1462,7 @@ CreateStmt:
 	| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF qualified_name '(' TypedTableElementList ')' ForValues OptPartitionSpec OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($7)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			inh := makeRangeVar($10)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
@@ -1467,6 +1481,7 @@ CreateStmt:
 	| CREATE OptTemp TABLE qualified_name OF any_name OptTypedTableElementList OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($4)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			tn := makeTypeNameFromNameList($6).(*nodes.TypeName)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
@@ -1481,6 +1496,7 @@ CreateStmt:
 	| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name OptTypedTableElementList OptAccessMethod OptWith OnCommitOption OptTableSpace
 		{
 			rv := makeRangeVar($7)
+			rv.(*nodes.RangeVar).Relpersistence = relpersistenceForTemp($2)
 			tn := makeTypeNameFromNameList($9).(*nodes.TypeName)
 			$$ = &nodes.CreateStmt{
 				Relation:       rv.(*nodes.RangeVar),
@@ -1918,13 +1934,14 @@ ColConstraintElem:
 		{
 			rv := makeRangeVar($2)
 			n := &nodes.Constraint{
-				Contype:      nodes.CONSTR_FOREIGN,
-				Pktable:      rv.(*nodes.RangeVar),
-				PkAttrs:      $3,
-				FkMatchtype:  byte($4),
-				FkUpdaction:  byte($5 >> 8),
-				FkDelaction:  byte($5 & 0xFF),
-				Location:     -1,
+				Contype:        nodes.CONSTR_FOREIGN,
+				Pktable:        rv.(*nodes.RangeVar),
+				PkAttrs:        $3,
+				FkMatchtype:    byte($4),
+				FkUpdaction:    $5.UpdateAction.Action,
+				FkDelaction:    $5.DeleteAction.Action,
+				FkDelsetcols:   $5.DeleteAction.Cols,
+				Location:       -1,
 				InitiallyValid: true,
 			}
 			applyConstraintAttrs(n, $6)
@@ -2085,14 +2102,15 @@ ConstraintElem:
 		{
 			rv := makeRangeVar($7)
 			n := &nodes.Constraint{
-				Contype:      nodes.CONSTR_FOREIGN,
-				FkAttrs:      $4,
-				Pktable:      rv.(*nodes.RangeVar),
-				PkAttrs:      $8,
-				FkMatchtype:  byte($9),
-				FkUpdaction:  byte($10 >> 8),
-				FkDelaction:  byte($10 & 0xFF),
-				Location:     -1,
+				Contype:        nodes.CONSTR_FOREIGN,
+				FkAttrs:        $4,
+				Pktable:        rv.(*nodes.RangeVar),
+				PkAttrs:        $8,
+				FkMatchtype:    byte($9),
+				FkUpdaction:    $10.UpdateAction.Action,
+				FkDelaction:    $10.DeleteAction.Action,
+				FkDelsetcols:   $10.DeleteAction.Cols,
+				Location:       -1,
 				InitiallyValid: true,
 			}
 			applyConstraintAttrs(n, $11)
@@ -2144,11 +2162,16 @@ key_match:
  * high byte = update action, low byte = delete action
  */
 key_actions:
-	key_update                  { $$ = ($1 << 8) | int64('a') }
-	| key_delete                { $$ = (int64('a') << 8) | $1 }
-	| key_update key_delete     { $$ = ($1 << 8) | $2 }
-	| key_delete key_update     { $$ = ($2 << 8) | $1 }
-	| /* EMPTY */               { $$ = (int64('a') << 8) | int64('a') }
+	key_update
+		{ $$ = &KeyActions{UpdateAction: $1, DeleteAction: &KeyAction{Action: 'a'}} }
+	| key_delete
+		{ $$ = &KeyActions{UpdateAction: &KeyAction{Action: 'a'}, DeleteAction: $1} }
+	| key_update key_delete
+		{ $$ = &KeyActions{UpdateAction: $1, DeleteAction: $2} }
+	| key_delete key_update
+		{ $$ = &KeyActions{UpdateAction: $2, DeleteAction: $1} }
+	| /* EMPTY */
+		{ $$ = &KeyActions{UpdateAction: &KeyAction{Action: 'a'}, DeleteAction: &KeyAction{Action: 'a'}} }
 	;
 
 key_update:
@@ -2160,11 +2183,11 @@ key_delete:
 	;
 
 key_action:
-	NO ACTION                   { $$ = int64('a') }
-	| RESTRICT                  { $$ = int64('r') }
-	| CASCADE                   { $$ = int64('c') }
-	| SET NULL_P opt_column_list    { $$ = int64('n') }
-	| SET DEFAULT opt_column_list   { $$ = int64('d') }
+	NO ACTION                     { $$ = &KeyAction{Action: 'a'} }
+	| RESTRICT                    { $$ = &KeyAction{Action: 'r'} }
+	| CASCADE                     { $$ = &KeyAction{Action: 'c'} }
+	| SET NULL_P opt_column_list  { $$ = &KeyAction{Action: 'n', Cols: $3} }
+	| SET DEFAULT opt_column_list { $$ = &KeyAction{Action: 'd', Cols: $3} }
 	;
 
 opt_c_include:
@@ -4300,6 +4323,7 @@ ViewStmt:
 	AS SelectStmt opt_check_option
 		{
 			rv := makeRangeVar($4).(*nodes.RangeVar)
+			rv.Relpersistence = relpersistenceForTemp($2)
 			$$ = &nodes.ViewStmt{
 				View:            rv,
 				Aliases:         $5,
@@ -4312,6 +4336,7 @@ ViewStmt:
 	AS SelectStmt opt_check_option
 		{
 			rv := makeRangeVar($6).(*nodes.RangeVar)
+			rv.Relpersistence = relpersistenceForTemp($4)
 			$$ = &nodes.ViewStmt{
 				View:            rv,
 				Aliases:         $7,
@@ -4325,6 +4350,7 @@ ViewStmt:
 	AS SelectStmt opt_check_option
 		{
 			rv := makeRangeVar($5).(*nodes.RangeVar)
+			rv.Relpersistence = relpersistenceForTemp($2)
 			/* Create a WITH RECURSIVE CTE wrapper */
 			cte := &nodes.CommonTableExpr{
 				Ctename:      rv.Relname,
@@ -4358,6 +4384,7 @@ ViewStmt:
 	AS SelectStmt opt_check_option
 		{
 			rv := makeRangeVar($7).(*nodes.RangeVar)
+			rv.Relpersistence = relpersistenceForTemp($4)
 			cte := &nodes.CommonTableExpr{
 				Ctename:      rv.Relname,
 				Ctequery:     $13,
@@ -7712,9 +7739,8 @@ simple_select:
 			if $6 != nil {
 				n.WhereClause = $6
 			}
-			if $7 != nil {
-				n.GroupClause = $7
-			}
+			n.GroupClause = $7.List
+			n.GroupDistinct = $7.Distinct
 			if $8 != nil {
 				n.HavingClause = $8
 			}
@@ -7738,9 +7764,8 @@ simple_select:
 			if $6 != nil {
 				n.WhereClause = $6
 			}
-			if $7 != nil {
-				n.GroupClause = $7
-			}
+			n.GroupClause = $7.List
+			n.GroupDistinct = $7.Distinct
 			if $8 != nil {
 				n.HavingClause = $8
 			}
@@ -7823,9 +7848,9 @@ distinct_clause:
 	;
 
 set_quantifier:
-	ALL { $$ = true }
-	| DISTINCT { $$ = false }
-	| /* EMPTY */ { $$ = false }
+	ALL { $$ = SET_QUANTIFIER_ALL }
+	| DISTINCT { $$ = SET_QUANTIFIER_DISTINCT }
+	| /* EMPTY */ { $$ = SET_QUANTIFIER_DEFAULT }
 	;
 
 /*****************************************************************************
@@ -8391,8 +8416,17 @@ where_or_current_clause:
 
 // GROUP BY clause
 group_clause:
-	GROUP_P BY set_quantifier group_by_list { $$ = $4 }
-	| /* EMPTY */ { $$ = nil }
+	GROUP_P BY set_quantifier group_by_list
+		{
+			$$ = &GroupClause{
+				Distinct: $3 == SET_QUANTIFIER_DISTINCT,
+				List:     $4,
+			}
+		}
+	| /* EMPTY */
+		{
+			$$ = &GroupClause{}
+		}
 	;
 
 group_by_list:
@@ -9507,17 +9541,27 @@ func_expr:
 	| func_expr_common_subexpr { $$ = $1 }
 	| json_aggregate_func filter_clause over_clause
 		{
-			/* json_aggregate_func returns a node; wrap filter/over if present */
-			n := $1
-			_ = $2
-			_ = $3
-			$$ = n
+			var c *nodes.JsonAggConstructor
+			switch v := $1.(type) {
+			case *nodes.JsonObjectAgg:
+				c = v.Constructor
+			case *nodes.JsonArrayAgg:
+				c = v.Constructor
+			}
+			if c != nil {
+				c.Agg_filter = $2
+				if $3 != nil {
+					c.Over = $3.(*nodes.WindowDef)
+				}
+			}
+			$$ = $1
 		}
 	;
 
 func_expr_windowless:
 	func_application		{ $$ = $1 }
 	| func_expr_common_subexpr	{ $$ = $1 }
+	| json_aggregate_func		{ $$ = $1 }
 	;
 
 within_group_clause:
@@ -17293,7 +17337,7 @@ func makeListNode(l *nodes.List) nodes.Node {
 }
 
 func makeRangeVar(names *nodes.List) nodes.Node {
-	rv := &nodes.RangeVar{Inh: true}
+	rv := &nodes.RangeVar{Inh: true, Relpersistence: 'p'}
 	if names != nil && len(names.Items) > 0 {
 		switch len(names.Items) {
 		case 1:
@@ -17422,10 +17466,10 @@ func concatLists(a, b *nodes.List) *nodes.List {
 	return result
 }
 
-func makeSetOp(op nodes.SetOperation, all bool, larg, rarg nodes.Node) nodes.Node {
+func makeSetOp(op nodes.SetOperation, quantifier int64, larg, rarg nodes.Node) nodes.Node {
 	n := &nodes.SelectStmt{
 		Op:   op,
-		All:  all,
+		All:  quantifier == SET_QUANTIFIER_ALL,
 		Larg: larg.(*nodes.SelectStmt),
 		Rarg: rarg.(*nodes.SelectStmt),
 	}
@@ -17607,6 +17651,34 @@ type SelectLimit struct {
 	LimitOption nodes.LimitOption
 }
 
+// GroupClause is an internal helper struct for passing GROUP BY clause
+// distinct flag and list through grammar rules (matches PostgreSQL's GroupClause).
+type GroupClause struct {
+	Distinct bool
+	List     *nodes.List
+}
+
+// KeyAction is an internal helper struct for passing FK action and column list
+// through grammar rules (matches PostgreSQL's KeyAction).
+type KeyAction struct {
+	Action byte
+	Cols   *nodes.List
+}
+
+// KeyActions is an internal helper struct for passing FK update/delete actions
+// through grammar rules (matches PostgreSQL's KeyActions).
+type KeyActions struct {
+	UpdateAction *KeyAction
+	DeleteAction *KeyAction
+}
+
+// SetQuantifier constants matching PostgreSQL's SetQuantifier enum.
+const (
+	SET_QUANTIFIER_DEFAULT  = int64(0)
+	SET_QUANTIFIER_ALL      = int64(1)
+	SET_QUANTIFIER_DISTINCT = int64(2)
+)
+
 // importQualification is an internal helper struct for passing IMPORT FOREIGN SCHEMA
 // qualification type and table list through grammar rules.
 // It implements the nodes.Node interface so it can be passed through %union.
@@ -17687,10 +17759,14 @@ func insertSelectOptions(stmt *nodes.SelectStmt, sortClause *nodes.List, locking
 // relpersistenceForTemp returns the relpersistence byte based on temp flag.
 // In PostgreSQL: 'p' = permanent (default), 't' = temporary
 func relpersistenceForTemp(tempFlag int64) byte {
-	if tempFlag == 1 {
+	switch tempFlag {
+	case 1:
 		return 't'
+	case 2:
+		return 'u'
+	default:
+		return 'p'
 	}
-	return 'p'
 }
 
 // extractArgTypes extracts the type names from a list of FunctionParameter nodes.
