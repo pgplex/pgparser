@@ -1915,9 +1915,10 @@ ColConstraintElem:
 	| CHECK '(' a_expr ')' no_inherit
 		{
 			n := &nodes.Constraint{
-				Contype:  nodes.CONSTR_CHECK,
-				RawExpr:  $3,
-				Location: -1,
+				Contype:        nodes.CONSTR_CHECK,
+				RawExpr:        $3,
+				Location:       -1,
+				InitiallyValid: true,
 			}
 			n.IsNoInherit = $5
 			$$ = n
@@ -2964,6 +2965,7 @@ alter_table_cmd:
 			$$ = &nodes.AlterTableCmd{
 				Subtype: int(nodes.AT_SetStorage),
 				Name:    $3,
+				Def:     &nodes.String{Str: $6},
 			}
 		}
 	| ALTER COLUMN ColId SET STORAGE DEFAULT
@@ -2971,6 +2973,7 @@ alter_table_cmd:
 			$$ = &nodes.AlterTableCmd{
 				Subtype: int(nodes.AT_SetStorage),
 				Name:    $3,
+				Def:     &nodes.String{Str: "default"},
 			}
 		}
 	| ALTER ColId SET STORAGE ColId
@@ -2978,6 +2981,7 @@ alter_table_cmd:
 			$$ = &nodes.AlterTableCmd{
 				Subtype: int(nodes.AT_SetStorage),
 				Name:    $2,
+				Def:     &nodes.String{Str: $5},
 			}
 		}
 	| ALTER ColId SET STORAGE DEFAULT
@@ -2985,6 +2989,7 @@ alter_table_cmd:
 			$$ = &nodes.AlterTableCmd{
 				Subtype: int(nodes.AT_SetStorage),
 				Name:    $2,
+				Def:     &nodes.String{Str: "default"},
 			}
 		}
 	/* SET STATISTICS */
