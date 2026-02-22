@@ -1,3 +1,6 @@
+> [!NOTE]
+> pgplex: Modern Developer Stack for Postgres - [pgconsole](https://github.com/pgplex/pgconsole) · [pgtui](https://github.com/pgplex/pgtui) · [pgschema](https://github.com/pgplex/pgschema) · pgparser
+
 # pgparser - Pure Go PostgreSQL Parser
 
 `pgparser` is a **pure Go** implementation of the PostgreSQL SQL parser. It translates the original PostgreSQL grammar (`gram.y`) into Go using `goyacc`, ensuring **100% compatibility** with the PostgreSQL parse tree structure.
