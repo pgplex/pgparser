@@ -1,5 +1,7 @@
 > [!NOTE]
 > pgplex: Modern Developer Stack for Postgres - [pgconsole](https://github.com/pgplex/pgconsole) · [pgtui](https://github.com/pgplex/pgtui) · [pgschema](https://github.com/pgplex/pgschema) · pgparser
+> 
+> Brought to you by [Bytebase](https://www.bytebase.com/), open-source database DevSecOps platform.
 
 # pgparser - Pure Go PostgreSQL Parser
 
@@ -80,6 +82,8 @@ go test ./parser/pgregress -run TestPGRegressStats -v
 
 [![Star History Chart](https://api.star-history.com/svg?repos=pgplex/pgparser&type=date&legend=top-left)](https://www.star-history.com/#pgplex/pgparser&type=date&legend=top-left)
 
-## License
+## Sponsor
 
-This project is licensed under the MIT License. Portions derived from PostgreSQL are subject to the PostgreSQL License.
+[Bytebase](https://www.bytebase.com?utm_sourcepgparser) - open source, web-based database DevSecOps platform.
+
+<a href="https://www.bytebase.com?utm_sourcepgparser"><img src="https://raw.githubusercontent.com/pgplex/pgschema/main/docs/images/bytebase.webp" /></a>
