@@ -1,7 +1,7 @@
 > [!NOTE]
-> pgplex: Modern Developer Stack for Postgres - [pgconsole](https://github.com/pgplex/pgconsole) · [pgtui](https://github.com/pgplex/pgtui) · [pgschema](https://github.com/pgplex/pgschema) · pgparser
-> 
 > Brought to you by [Bytebase](https://www.bytebase.com/), open-source database DevSecOps platform.
+
+![](https://raw.githubusercontent.com/pgplex/website/refs/heads/main/public/banner-pgparser.png)
 
 # pgparser - Pure Go PostgreSQL Parser
 
